@@ -1,6 +1,7 @@
 from core import storage
 from core.schema import TableSchema
 from core.indexer import Index
+from core.storage import ensure_data_dir
 
 class DatabaseEngine:
     def __init__(self):
@@ -10,9 +11,31 @@ class DatabaseEngine:
 
     def _load_existing_metadata(self):
         """Loads metadata from disk and rebuilds indices."""
-        # Note: In a real DB, you'd load metadata.json here.
-        # For Milestone 2, we initialize indices manually in the test.
-        pass
+        ensure_data_dir()
+        try:
+            with open(storage.METADATA_FILE, 'r') as f:
+                metadata = storage.json.load(f)
+            for table_name, schema_dict in metadata.items():
+                schema = TableSchema(
+                    name=schema_dict['name'],
+                    columns=schema_dict['columns'],
+                    primary_key=schema_dict.get('primary_key'),
+                    unique_keys=schema_dict.get('unique_keys', [])
+                )
+                self.schemas[table_name] = schema
+                self.indices[table_name] = {}
+                
+                # Rebuild indices for primary key
+                if schema.primary_key:
+                    self.indices[table_name][schema.primary_key] = Index()
+                    rows = storage.load_table_data(table_name)
+                    for idx, row in enumerate(rows):
+                        pk_value = row[schema.primary_key]
+                        self.indices[table_name][schema.primary_key].add(pk_value, idx)
+        except (FileNotFoundError, storage.json.JSONDecodeError):
+            # No existing metadata
+            pass
+        
 
     def create_table(self, name, columns, primary_key=None, unique_keys=None):
         schema = TableSchema(name, columns, primary_key, unique_keys)
@@ -60,7 +83,13 @@ class DatabaseEngine:
             return rows
         
         col, val = list(where.items())[0]
+        schema = self.schemas[table_name]
         # Performance: Use index if available
+        target_type = schema.columns.get(col)
+        if target_type == 'int':
+            val = int(val)
+        elif target_type == 'float':
+            val = float(val)
         if table_name in self.indices and col in self.indices[table_name]:
             idx = self.indices[table_name][col].get(val)
             return [rows[idx]] if idx is not None else []
@@ -90,6 +119,6 @@ class DatabaseEngine:
                         # If a key exists in both, prefix the second one
                         new_key = key if key not in combined else f"{table_b_name}_{key}"
                         combined[new_key] = value
-                    joined_results.append(combined)
+                    joined_results.append(combined)        
         
         return joined_results
