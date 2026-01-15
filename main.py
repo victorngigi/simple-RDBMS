@@ -1,35 +1,31 @@
-from core.schema import TableSchema
-from core import storage
+from core.engine import DatabaseEngine
 
-def test_milestone_1_persistence():
-    print("--- Running Milestone 1 Test: Persistence ---")
-    
-    # 1. Setup Table and Data
-    user_columns = {"id": "int", "name": "str"}
-    schema = TableSchema(name="users", columns=user_columns, primary_key="id")
-    valid_row = {"id": 1, "name": "Lucy"}
-    
-    # 2. Test Saving Schema
+def test_milestone_2_engine():
+    print("--- Running Milestone 2 Test: Database Engine ---")
+    db = DatabaseEngine()
+
+    # 1. Create Table
+    print(db.create_table("users", {"id": "int", "name": "str"}, primary_key="id"))
+
+    # 2. Insert Data
+    db.insert("users", {"id": 1, "name": "Lucy"})
+    db.insert("users", {"id": 2, "name": "Rex"})
+    print("✅ Inserted Lucy and Rex")
+
+    # 3. Test Primary Key Violation
     try:
-        storage.save_schema(schema.to_dict())
-        print("✅ Metadata saved to metadata.json")
-    except Exception as e:
-        print(f"❌ Failed to save metadata: {e}")
+        db.insert("users", {"id": 1, "name": "Duplicate Lucy"})
+    except ValueError as e:
+        print(f"✅ Successfully blocked duplicate ID: {e}")
 
-    # 3. Test Saving and Loading Rows
-    try:
-        rows_to_save = [valid_row]
-        storage.save_table_data("users", rows_to_save)
-        print("✅ Data saved to users.json")
-        
-        loaded_rows = storage.load_table_data("users")
-        print(f"✅ Data loaded successfully: {loaded_rows}")
-        assert loaded_rows == rows_to_save
-    except Exception as e:
-        print(f"❌ Persistence failed: {e}")
+    # 4. Test Indexed Selection
+    result = db.select("users", where={"id": 2})
+    print(f"✅ Indexed Select Result: {result}")
+    
+    assert len(result) == 1
+    assert result[0]['name'] == "Rex"
 
-    print("--- Milestone 1 Persistence Complete ---\n")
+    print("--- Milestone 2 Complete ---")
 
 if __name__ == "__main__":
-    # test_milestone_1() # You already passed this!
-    test_milestone_1_persistence()
+    test_milestone_2_engine()
