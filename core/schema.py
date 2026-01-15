@@ -1,28 +1,43 @@
-class Table:
-    def __init__(self, name, columns):
+class TableSchema:
+    def __init__(self, name, columns, primary_key=None, unique_keys=None):
+        """
+        :param name: String name of the table
+        :param columns: Dict of {column_name: type_string} e.g. {'id': 'int'}
+        :param primary_key: String name of the PK column
+        :param unique_keys: List of column names that must be unique
+        """
         self.name = name
-        self.columns = columns  # Dictionary of column_name: type (e.g., {'email': 'string', 'age': 'int'})
-        self.data = [] # List of dictionaries, where each dictionary is a row
+        self.columns = columns
+        self.primary_key = primary_key
+        self.unique_keys = unique_keys or []
 
-    def add_row(self, row_data):
-        # Basic type checking (can be expanded)
-        if not isinstance(row_data, dict):
+    def validate(self, data):
+        """Validates and coerces types for a single row (dict)."""
+        if not isinstance(data, dict):
             raise ValueError("Row data must be a dictionary.")
 
         for col_name, col_type in self.columns.items():
-            if col_name not in row_data:
-                raise ValueError(f"Missing column '{col_name}' in row data.")
-            # Add more robust type checking here if needed
-            # For example:
-            # if col_type == 'int' and not isinstance(row_data[col_name], int):
-            #     raise TypeError(f"Expected int for column '{col_name}', got {type(row_data[col_name])}.")
-            # if col_type == 'string' and not isinstance(row_data[col_name], str):
-            #     raise TypeError(f"Expected string for column '{col_name}', got {type(row_data[col_name])}.")
+            if col_name not in data:
+                raise ValueError(f"Missing column '{col_name}' for table '{self.name}'.")
+            
+            value = data[col_name]
+            try:
+                if col_type == 'int':
+                    data[col_name] = int(value)
+                elif col_type == 'float':
+                    data[col_name] = float(value)
+                elif col_type == 'str':
+                    data[col_name] = str(value)
+            except (ValueError, TypeError):
+                raise TypeError(f"Column '{col_name}' expected {col_type}, got {type(value).__name__}")
 
-        self.data.append(row_data)
+        return data
 
-    def get_rows(self):
-        return self.data
-
-    def __repr__(self):
-        return f"Table(name='{self.name}', columns={self.columns}, rows={len(self.data)})"
+    def to_dict(self):
+        """Helper to save schema definition to metadata.json"""
+        return {
+            "name": self.name,
+            "columns": self.columns,
+            "primary_key": self.primary_key,
+            "unique_keys": self.unique_keys
+        }
