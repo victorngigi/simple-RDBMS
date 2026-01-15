@@ -1,31 +1,29 @@
 from core.engine import DatabaseEngine
 
-def test_milestone_2_engine():
-    print("--- Running Milestone 2 Test: Database Engine ---")
+def test_milestone_2_joins():
+    print("--- Running Milestone 2.5 Test: Relational Joins ---")
     db = DatabaseEngine()
 
-    # 1. Create Table
-    print(db.create_table("users", {"id": "int", "name": "str"}, primary_key="id"))
+    # 1. Setup Tables
+    db.create_table("users", {"id": "int", "name": "str"}, primary_key="id")
+    db.create_table("posts", {"p_id": "int", "user_id": "int", "content": "str"}, primary_key="p_id")
 
     # 2. Insert Data
     db.insert("users", {"id": 1, "name": "Lucy"})
-    db.insert("users", {"id": 2, "name": "Rex"})
-    print("✅ Inserted Lucy and Rex")
+    db.insert("posts", {"p_id": 101, "user_id": 1, "content": "Hello PesaDB!"})
+    db.insert("posts", {"p_id": 102, "user_id": 1, "content": "Learning RDBMS is fun."})
 
-    # 3. Test Primary Key Violation
-    try:
-        db.insert("users", {"id": 1, "name": "Duplicate Lucy"})
-    except ValueError as e:
-        print(f"✅ Successfully blocked duplicate ID: {e}")
-
-    # 4. Test Indexed Selection
-    result = db.select("users", where={"id": 2})
-    print(f"✅ Indexed Select Result: {result}")
+    # 3. Perform Join
+    # Link users.id to posts.user_id
+    results = db.join("users", "posts", "id", "user_id")
     
-    assert len(result) == 1
-    assert result[0]['name'] == "Rex"
+    print(f"✅ Join Success! Found {len(results)} joined records.")
+    for row in results:
+        print(f"   - {row['name']} posted: '{row['content']}'")
 
-    print("--- Milestone 2 Complete ---")
+    assert len(results) == 2
+    assert results[0]['name'] == "Lucy"
+    print("--- Milestone 2.5 Complete ---")
 
 if __name__ == "__main__":
-    test_milestone_2_engine()
+    test_milestone_2_joins()
