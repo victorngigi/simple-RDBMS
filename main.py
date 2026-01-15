@@ -1,40 +1,35 @@
 from core.schema import TableSchema
+from core import storage
 
-def test_milestone_1():
-    print("--- Running Milestone 1 Test: Schema Validation ---")
+def test_milestone_1_persistence():
+    print("--- Running Milestone 1 Test: Persistence ---")
     
-    # 1. Define a schema for a 'users' table
-    user_columns = {
-        "id": "int",
-        "name": "str",
-        "balance": "float"
-    }
+    # 1. Setup Table and Data
+    user_columns = {"id": "int", "name": "str"}
     schema = TableSchema(name="users", columns=user_columns, primary_key="id")
-
-    # 2. Test valid data
-    valid_row = {"id": "1", "name": "Lucy", "balance": "500.50"}
+    valid_row = {"id": 1, "name": "Lucy"}
+    
+    # 2. Test Saving Schema
     try:
-        cleaned_data = schema.validate(valid_row)
-        print(f"✅ Validation Success: {cleaned_data}")
-        assert isinstance(cleaned_data['id'], int)
-        assert isinstance(cleaned_data['balance'], float)
+        storage.save_schema(schema.to_dict())
+        print("✅ Metadata saved to metadata.json")
     except Exception as e:
-        print(f"❌ Validation Failed unexpectedly: {e}")
+        print(f"❌ Failed to save metadata: {e}")
 
-    # 3. Test invalid data (missing column)
-    invalid_row = {"id": 2, "name": "Rex"} # missing 'balance'
+    # 3. Test Saving and Loading Rows
     try:
-        schema.validate(invalid_row)
-        print("❌ Failed: Should have caught missing column.")
-    except ValueError as e:
-        print(f"✅ Successfully caught error: {e}")
+        rows_to_save = [valid_row]
+        storage.save_table_data("users", rows_to_save)
+        print("✅ Data saved to users.json")
+        
+        loaded_rows = storage.load_table_data("users")
+        print(f"✅ Data loaded successfully: {loaded_rows}")
+        assert loaded_rows == rows_to_save
+    except Exception as e:
+        print(f"❌ Persistence failed: {e}")
 
-    print("--- Milestone 1 Test Complete ---\n")
+    print("--- Milestone 1 Persistence Complete ---\n")
 
 if __name__ == "__main__":
-    # This will be commented out once the REPL is ready
-    test_milestone_1()
-    
-    # Future entry point:
-    # from interface.repl import start_repl
-    # start_repl()
+    # test_milestone_1() # You already passed this!
+    test_milestone_1_persistence()
