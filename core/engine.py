@@ -67,3 +67,29 @@ class DatabaseEngine:
         
         # Fallback: Full table scan
         return [r for r in rows if r.get(col) == val]
+    
+    def join(self, table_a_name, table_b_name, join_col_a, join_col_b):
+        """
+        Performs an Inner Join between two tables.
+        Returns a list of combined dictionaries.
+        """
+        # Load both datasets
+        rows_a = storage.load_table_data(table_a_name)
+        rows_b = storage.load_table_data(table_b_name)
+        
+        joined_results = []
+
+        # Nested Loop Join Algorithm
+        for row_a in rows_a:
+            for row_b in rows_b:
+                # Check if the join condition is met
+                if row_a.get(join_col_a) == row_b.get(join_col_b):
+                    # Merge dictionaries (handle overlapping column names)
+                    combined = row_a.copy()
+                    for key, value in row_b.items():
+                        # If a key exists in both, prefix the second one
+                        new_key = key if key not in combined else f"{table_b_name}_{key}"
+                        combined[new_key] = value
+                    joined_results.append(combined)
+        
+        return joined_results
