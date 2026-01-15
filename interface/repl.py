@@ -23,11 +23,17 @@ def start_repl(engine):
                 print(msg)
             
             elif parsed['action'] == "insert":
-                # Convert list values to dict matching schema
                 schema = engine.schemas[parsed['table']]
                 col_names = list(schema.columns.keys())
-                row_data = dict(zip(col_names, parsed['values']))
-                print(engine.insert(parsed['table'], row_data))
+                
+                # Create the raw dict from parser strings
+                raw_data = dict(zip(col_names, parsed['values']))
+                
+                # CRITICAL: Use the schema to validate AND COERCE types
+                # This turns "1" (str) into 1 (int)
+                validated_row = schema.validate(raw_data) 
+                
+                print(engine.insert(parsed['table'], validated_row))            
 
             elif parsed['action'] == "select":
                 results = engine.select(parsed['table'], where=parsed['where'])
