@@ -97,6 +97,38 @@ class DatabaseEngine:
         # Fallback: Full table scan
         return [r for r in rows if r.get(col) == val]
     
+    def update(self, table_name, where, new_data):
+            """Updates records matching the 'where' criteria."""
+            rows = storage.load_table_data(table_name)
+            schema = self.schemas[table_name]
+            count = 0
+
+            for i, row in enumerate(rows):
+                # Check if row matches 'where' (e.g., {'id': 1})
+                match = all(row.get(k) == v for k, v in where.items())
+                if match:
+                    # Update row and re-validate
+                    updated_row = {**row, **new_data}
+                    rows[i] = schema.validate(updated_row)
+                    count += 1
+            
+            storage.save_table_data(table_name, rows)
+            # Re-build indices because values changed
+            self._load_existing_metadata() 
+            return f"Updated {count} row(s)."
+
+    def delete(self, table_name, where):
+        """Deletes records matching the 'where' criteria."""
+        rows = storage.load_table_data(table_name)
+        # Filter out the rows that match the 'where' condition
+        new_rows = [r for r in rows if not all(r.get(k) == v for k, v in where.items())]
+        
+        deleted_count = len(rows) - len(new_rows)
+        storage.save_table_data(table_name, new_rows)
+        # Re-build indices to remove deleted keys
+        self._load_existing_metadata()
+        return f"Deleted {deleted_count} row(s)."    
+    
     def join(self, table_a_name, table_b_name, join_col_a, join_col_b):
         """
         Performs an Inner Join between two tables.
