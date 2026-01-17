@@ -1,5 +1,5 @@
 class TableSchema:
-    def __init__(self, name, columns, primary_key=None, unique_keys=None):
+    def __init__(self, name, columns, primary_key=None, unique_keys=None, foreign_keys=None):
         """
         :param name: String name of the table
         :param columns: Dict of {column_name: type_string} e.g. {'id': 'int'}
@@ -10,6 +10,16 @@ class TableSchema:
         self.columns = columns
         self.primary_key = primary_key
         self.unique_keys = unique_keys or []
+        self.foreign_keys = foreign_keys or{}  # To be populated later
+
+        def to_dict(self):
+            return {
+                "name": self.name,
+                "columns": self.columns,
+                "primary_key": self.primary_key,
+                "unique_keys": self.unique_keys,
+                "foreign_keys": self.foreign_keys
+            }
 
     def validate(self, data):
         """Validates and coerces types for a single row (dict)."""

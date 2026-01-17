@@ -1,124 +1,215 @@
+import os
+import json
+import shutil  # Required for deleting database directories
 from core import storage
 from core.schema import TableSchema
 from core.indexer import Index
-from core.storage import ensure_data_dir
 
 class DatabaseEngine:
     def __init__(self):
+        self.active_db = None
         self.indices = {} # Stores {table_name: {column_name: Index()}}
         self.schemas = {} # Stores {table_name: TableSchema}
-        self._load_existing_metadata()
 
-    def _load_existing_metadata(self):
-        """Loads metadata from disk and rebuilds indices."""
-        ensure_data_dir()
+    # --- DATABASE OPERATIONS ---
+
+    def list_databases(self):
+        """Lists all existing database folders in the data directory."""
+        if not os.path.exists(storage.BASE_DATA_DIR):
+            return []
+        return [d for d in os.listdir(storage.BASE_DATA_DIR) 
+                if os.path.isdir(os.path.join(storage.BASE_DATA_DIR, d))]
+
+    def set_active_db(self, db_name):
+        """Switches context and hydrates memory with DB metadata."""
+        self.active_db = db_name
+        self.schemas = {}
+        self.indices = {}
+        
+        db_path = storage.ensure_db_dir(db_name)
+        metadata_file = os.path.join(db_path, 'metadata.json')
+        
         try:
-            with open(storage.METADATA_FILE, 'r') as f:
-                metadata = storage.json.load(f)
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
             for table_name, schema_dict in metadata.items():
                 schema = TableSchema(
                     name=schema_dict['name'],
                     columns=schema_dict['columns'],
                     primary_key=schema_dict.get('primary_key'),
-                    unique_keys=schema_dict.get('unique_keys', [])
+                    unique_keys=schema_dict.get('unique_keys', []),
+                    foreign_keys=schema_dict.get('foreign_keys', {}) # Ensure FKs load
                 )
                 self.schemas[table_name] = schema
                 self.indices[table_name] = {}
                 
-                # Rebuild indices for primary key
                 if schema.primary_key:
                     self.indices[table_name][schema.primary_key] = Index()
-                    rows = storage.load_table_data(table_name)
-                    for idx, row in enumerate(rows):
-                        pk_value = row[schema.primary_key]
+                    rows = storage.load_table_data(db_name, table_name)
+                    for idx, r in enumerate(rows):
+                        pk_value = r[schema.primary_key]
                         self.indices[table_name][schema.primary_key].add(pk_value, idx)
-        except (FileNotFoundError, storage.json.JSONDecodeError):
-            # No existing metadata
+        except (FileNotFoundError, json.JSONDecodeError):
             pass
-        
 
-    def create_table(self, name, columns, primary_key=None, unique_keys=None):
-        schema = TableSchema(name, columns, primary_key, unique_keys)
+    def delete_database(self, db_name):
+        """Physically removes the database directory."""
+        db_path = os.path.join(storage.BASE_DATA_DIR, db_name)
+        if os.path.exists(db_path):
+            shutil.rmtree(db_path)
+            if self.active_db == db_name:
+                self.active_db = None
+                self.schemas = {}
+                self.indices = {}
+            return f"Database '{db_name}' dropped."
+        raise ValueError(f"Database '{db_name}' not found.")
+
+    # --- TABLE OPERATIONS ---
+
+    def create_table(self, name, columns, primary_key=None, unique_keys=None, foreign_keys=None):
+        if not self.active_db:
+            raise ValueError("Please select or create a database first.")
+            
+        schema = TableSchema(name, columns, primary_key, unique_keys, foreign_keys)
         self.schemas[name] = schema
         self.indices[name] = {}
         
-        # Initialize index for primary key
         if primary_key:
             self.indices[name][primary_key] = Index()
             
-        storage.save_schema(schema.to_dict())
-        storage.save_table_data(name, []) # Create empty file
-        return f"Table '{name}' created successfully."
+        storage.save_schema(self.active_db, schema.to_dict())
+        storage.save_table_data(self.active_db, name, []) 
+        return f"Table '{name}' created successfully in '{self.active_db}'."
+
+    def drop_table(self, table_name):
+        """Deletes table data and metadata entry."""
+        if not self.active_db:
+            raise ValueError("No active database selected.")
+        
+        # Remove from memory
+        self.schemas.pop(table_name, None)
+        self.indices.pop(table_name, None)
+
+        # Update metadata.json on disk
+        db_path = storage.ensure_db_dir(self.active_db)
+        metadata_file = os.path.join(db_path, 'metadata.json')
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        
+        if table_name in metadata:
+            del metadata[table_name]
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=4)
+
+        # Delete JSON file
+        file_path = os.path.join(db_path, f"{table_name}.json")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        return f"Table '{table_name}' dropped."
+
+    # --- ROW OPERATIONS ---
 
     def insert(self, table_name, row_data):
-        if table_name not in self.schemas:
-            raise ValueError(f"Table '{table_name}' does not exist.")
-
+        if not self.active_db:
+            raise ValueError("No active database selected.")
+        
         schema = self.schemas[table_name]
-        data = schema.validate(row_data) # Milestone 1 logic
+        data = schema.validate(row_data)
         
-        # Load existing rows
-        rows = storage.load_table_data(table_name)
+        rows = storage.load_table_data(self.active_db, table_name)
         
-        # Check Primary Key Constraint
-        pk = schema.primary_key
-        if pk:
-            pk_value = data[pk]
-            index = self.indices[table_name][pk]
-            if index.get(pk_value) is not None:
-                raise ValueError(f"Integrity Error: Duplicate Primary Key '{pk_value}'")
-            
-            # Update index with the new row's position
-            index.add(pk_value, len(rows))
+        # Primary Key Check
+        if schema.primary_key:
+            pk_val = data.get(schema.primary_key)
+            if any(r.get(schema.primary_key) == pk_val for r in rows):
+                raise ValueError(f"PK Integrity Error: {pk_val} already exists.")
 
-        # Append and Save
+        # Foreign Key Check
+        if hasattr(schema, 'foreign_keys') and schema.foreign_keys:
+            for local_col, reference in schema.foreign_keys.items():
+                parent_table, parent_col = reference.split('.')
+                parent_rows = storage.load_table_data(self.active_db, parent_table)
+                fk_val = data.get(local_col)
+                if not any(pr.get(parent_col) == fk_val for pr in parent_rows):
+                    raise ValueError(f"FK Integrity Error: Value '{fk_val}' not found in {parent_table}.")
+
         rows.append(data)
-        storage.save_table_data(table_name, rows)
-        return "Row inserted successfully."
+        storage.save_table_data(self.active_db, table_name, rows)
+        return "Row inserted."
+
+    def update(self, table_name, pk_value, updated_fields):
+        """Finds row by PK and merges new fields."""
+        if not self.active_db:
+            raise ValueError("No active database.")
+        
+        schema = self.schemas[table_name]
+        rows = storage.load_table_data(self.active_db, table_name)
+        pk_col = schema.primary_key
+        
+        updated = False
+        for i, row in enumerate(rows):
+            if str(row.get(pk_col)) == str(pk_value):
+                new_row = {**row, **updated_fields}
+                rows[i] = schema.validate(new_row)
+                updated = True
+                break
+
+        if updated:
+            storage.save_table_data(self.active_db, table_name, rows)
+            self.set_active_db(self.active_db) # Refresh memory/indices
+            return f"Record {pk_value} updated."
+        raise ValueError(f"Record {pk_value} not found.")
+
+    def delete(self, table_name, where):
+        """Deletes rows matching 'where' criteria."""
+        if not self.active_db:
+            raise ValueError("No active database.")
+        
+        rows = storage.load_table_data(self.active_db, table_name)
+        new_rows = [
+            r for r in rows 
+            if not all(str(r.get(k)) == str(v) for k, v in where.items())
+        ]
+        
+        storage.save_table_data(self.active_db, table_name, new_rows)
+        self.set_active_db(self.active_db) # Refresh indices
+        return f"Deleted {len(rows) - len(new_rows)} row(s)."
 
     def select(self, table_name, where=None):
-        """Simple select with an optional {column: value} filter."""
-        rows = storage.load_table_data(table_name)
+        if not self.active_db:
+            raise ValueError("No active database selected.")
+        rows = storage.load_table_data(self.active_db, table_name)
         if not where:
             return rows
         
-        col, val = list(where.items())[0]
         schema = self.schemas[table_name]
-        # Performance: Use index if available
+        col, val = list(where.items())[0]
+        
         target_type = schema.columns.get(col)
-        if target_type == 'int':
+        if target_type == 'int': 
             val = int(val)
-        elif target_type == 'float':
+        elif target_type == 'float': 
             val = float(val)
+
         if table_name in self.indices and col in self.indices[table_name]:
             idx = self.indices[table_name][col].get(val)
             return [rows[idx]] if idx is not None else []
         
-        # Fallback: Full table scan
         return [r for r in rows if r.get(col) == val]
-    
+
     def join(self, table_a_name, table_b_name, join_col_a, join_col_b):
-        """
-        Performs an Inner Join between two tables.
-        Returns a list of combined dictionaries.
-        """
-        # Load both datasets
-        rows_a = storage.load_table_data(table_a_name)
-        rows_b = storage.load_table_data(table_b_name)
+        if not self.active_db:
+            raise ValueError("No active database selected.")
+        rows_a = storage.load_table_data(self.active_db, table_a_name)
+        rows_b = storage.load_table_data(self.active_db, table_b_name)
         
         joined_results = []
-
-        # Nested Loop Join Algorithm
         for row_a in rows_a:
             for row_b in rows_b:
-                # Check if the join condition is met
                 if row_a.get(join_col_a) == row_b.get(join_col_b):
-                    # Merge dictionaries (handle overlapping column names)
                     combined = row_a.copy()
                     for key, value in row_b.items():
-                        # If a key exists in both, prefix the second one
                         new_key = key if key not in combined else f"{table_b_name}_{key}"
                         combined[new_key] = value
                     joined_results.append(combined)        
-        
         return joined_results
