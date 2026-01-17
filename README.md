@@ -29,15 +29,11 @@ This project was designed and developed within an intensive **48-hour** timefram
 * **Foreign Keys (FK):** Implements referential integrity checks during insertion to prevent "orphaned" records (e.g., ensuring a `student_id` exists in the `students` table before an enrollment record is saved).
 * **Join Algorithm:** A custom Nested Loop Join implementation allows for the generation of virtual views combining data from multiple disk sectors.
 
-
-
-### 3. PesaDB Bash (Terminal Shell)
+### 3. Unified Terminal Experience (CLI & Web Shell)
 A raw command-line interface featuring a regex-based parser. Users can bypass the UI to execute low-level engine instructions directly:
-* `USE <db_name>` - Switch logical database context.
-* `CREATE DATABASE <db_name>` - Initialize a new disk cluster.
-* `SELECT FROM <table_name>` - Retrieve record sets.
-* `INSERT INTO <table_name> {data}` - Commit structured records.
-* `HELP` - Integrated documentation for shell syntax.
+* **Command History:** Navigate previous instructions using ArrowUp/Down keys (supported in both Python REPL and Web Console).
+* **Contextual Validation:** Prevents switching to non-existent databases with proper error handling.
+* **Soft-Sync Logic:** Terminal commands (like USE) automatically update the Sidebar and Header Badge context without forcing a full UI navigation.
 
 ### 4. Admin Console (UI/UX)
 * **Dynamic Schema Designer:** A visual tool to define entities, attributes, PKs, and FKs with real-time feedback.
@@ -52,12 +48,6 @@ A raw command-line interface featuring a regex-based parser. Users can bypass th
 * **API:** FastAPI (Context-aware asynchronous routing)
 * **Frontend:** React, Vite, Tailwind CSS, Shadcn/UI, Lucide Icons
 * **Communication:** Axios (RESTful API interaction)
-
----
-
-## Ownership & License
-
-This project is released under the **MIT License**. **Victor Ngigi** maintains full ownership of the original logic, architecture, and source code developed for this challenge.
 
 ---
 
@@ -81,7 +71,10 @@ pip install fastapi uvicorn
 
 # Start the PesaDB Engine
 python -m uvicorn web_demo.backend.app:app --reload
+```
 
+### 2.Frontend Setup (Web Admin Console)
+```bash
 # Navigate to the frontend directory
 cd web_demo/frontend
 
@@ -91,9 +84,34 @@ npm install
 # Launch the Admin Console
 npm run dev
 ```
+
+### 3. REPL Setup (Direct CLI Access)
+```bash
+# From the project root (ensure venv is active)
+python interface/repl.py
+```
+_Note: For full command history support on Windows, ```pip install pyreadline3``` is recommended._
+
 ---
 
-## Conclusion
-PesaDB demonstrates a comprehensive understanding of how relational data is structured, isolated, and queried. By combining low-level engine logic (referential integrity, indexing, joins) with a modern high-level interface, this project serves as a robust proof-of-concept for a scalable storage solution.
+## CLI Quick Reference
+Whether using the Web Terminal or the Python REPL, use these commands to manage your data:
+| Command | Action |
+| :--- | :--- |
+| `HELP` | Show the integrated manual |
+| `SHOW DATABASES` | List all available logical clusters |
+| `CREATE DATABASE <db>` | Initialize a new disk cluster |
+| `USE <db>` | Switch current session context |
+| `SHOW TABLES` | List all entities in the active DB |
+| `SELECT FROM <table>` | Query all records from an entity |
+| `INSERT INTO <table> {d}` | Commit a JSON record (e.g. `{"id":1, "name":"Victor"}`) |
+| `DROP TABLE <table>` | Permanently delete an entity and its data |
+
+## Ownership & License
+
+This project is released under the **MIT License**. **Victor Ngigi** maintains full ownership of the original logic, architecture, and source code developed for this challenge.
+
+---
 
 ### Built with passion and precision for the Pesapal Engineering Challenge.
+
