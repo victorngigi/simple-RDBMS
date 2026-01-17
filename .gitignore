@@ -10,18 +10,18 @@ build/
 dist/
 
 # --- Database Data (CRITICAL) ---
-# We ignore the contents of the data folder so your personal 
-# test data doesn't get pushed, but we keep the folder itself.
-data/*
+# Ignores all dynamic DB files but keeps the structure
+data/**
 !data/.gitkeep
 
 # --- Node/Web Demo (Vite/React) ---
-web_demo/node_modules/
-web_demo/dist/
-web_demo/.env.local
-web_demo/.env.development.local
-web_demo/.env.test.local
-web_demo/.env.production.local
+# Update these if your frontend is in a subfolder like web_demo/frontend/
+**/node_modules/
+**/dist/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # --- OS Specific ---
 .DS_Store
