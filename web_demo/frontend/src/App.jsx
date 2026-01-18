@@ -18,6 +18,8 @@ import {
   GitBranch,
   Terminal as TerminalIcon,
   Columns,
+  Menu, // Added for mobile toggle
+  PanelLeftClose, // Added for desktop collapse
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +63,10 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
+  // --- RESPONSIVE STATES ---
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
   // --- TERMINAL STATES ---
   const [historyStack, setHistoryStack] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -97,6 +103,19 @@ const App = () => {
     type: null,
     target: null,
   });
+
+  // --- RESPONSIVE HANDLER ---
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const base = "PesaDB";
@@ -143,6 +162,7 @@ const App = () => {
     setSelectedTable(null);
     setCurrentView("db-overview");
     setIsLoading(true);
+    if (isMobile) setSidebarOpen(false); // Close sidebar on mobile after selection
     try {
       const res = await axios.get(`${API_URL}/${dbName}/tables`);
       setTables(res.data);
@@ -159,6 +179,7 @@ const App = () => {
     setEditingPk(null);
     setRowPayload({});
     setIsLoading(true);
+    if (isMobile) setSidebarOpen(false); // Close sidebar on mobile after selection
     try {
       const res = await axios.get(`${API_URL}/${activeDb}/${tableName}/rows`);
       setTableData(res.data.rows);
@@ -293,12 +314,11 @@ const App = () => {
         setTables(tables.filter((t) => t !== target));
         setCurrentView("db-overview");
       } else if (type === "column") {
-        // API call to the new DELETE endpoint
         await axios.delete(
           `${API_URL}/${activeDb}/${target}/columns/${columnName}`,
         );
         toast.success(`Schema evolved: ${columnName} removed`);
-        fetchRows(target); // Reload the table to show updated columns
+        fetchRows(target); 
       }
 
       if (type !== "column") toast.success(`${type} dropped successfully`);
@@ -314,6 +334,7 @@ const App = () => {
       });
     }
   };
+  
   // --- TERMINAL & RELATIONAL ---
   const handleShellCommand = async (e) => {
     if (e.key === "ArrowUp") {
@@ -396,8 +417,16 @@ const App = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
       <Toaster position="top-right" richColors />
+
+      {/* --- MOBILE OVERLAY --- */}
+      {isMobile && sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/60 z-40 backdrop-blur-sm transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       <AlertDialog
         open={deleteConfirm.show}
@@ -428,136 +457,170 @@ const App = () => {
       </AlertDialog>
 
       {/* --- SIDEBAR --- */}
-      <aside className="w-80 bg-slate-950 text-slate-300 flex flex-col border-r border-slate-800">
-        <div className="p-6 border-b border-slate-800 flex items-center gap-3 text-white">
-          <DatabaseZap className="text-blue-500 animate-pulse" size={24} />
-          <span className="font-bold text-xl tracking-tighter uppercase">
-            PesaDB Console
-          </span>
-        </div>
-        <nav className="flex-1 overflow-y-auto p-4 space-y-8">
-          <div>
-            <p className="text-[10px] uppercase text-slate-500 font-bold mb-3 px-2 tracking-widest">
-              Global Engine
-            </p>
-            <button
-              onClick={() => setCurrentView("terminal")}
-              className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-all group ${currentView === "terminal" ? "text-emerald-400 bg-slate-900" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
-            >
-              <TerminalIcon
-                size={14}
-                className={
-                  currentView === "terminal"
-                    ? "animate-pulse"
-                    : "group-hover:text-emerald-400"
-                }
-              />{" "}
-              Terminal Shell
-            </button>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase text-slate-500 font-bold mb-3 px-2 tracking-widest">
-              Active Clusters
-            </p>
-            <div className="space-y-1">
-              {databases.map((db) => (
-                <div
-                  key={db}
-                  className="flex items-center group px-1 rounded-md transition-colors hover:bg-slate-900/50"
+      <aside className={`
+        ${isMobile ? "fixed inset-y-0 left-0 z-50" : "relative"}
+        ${sidebarOpen ? "w-80 translate-x-0" : "w-0 -translate-x-full lg:w-0"}
+        bg-slate-950 text-slate-300 flex flex-col border-r border-slate-800 transition-all duration-300 ease-in-out
+      `}>
+        {/* Only render content if sidebar is physically open to prevent layout jitters */}
+        {(sidebarOpen || !isMobile) && (
+          <div className="min-w-[20rem] flex flex-col h-full">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between text-white">
+              <div className="flex items-center gap-3">
+                <DatabaseZap className="text-blue-500 animate-pulse" size={24} />
+                <span className="font-bold text-xl tracking-tighter uppercase">
+                  PesaDB Console
+                </span>
+              </div>
+              {isMobile && (
+                <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
+                  <X size={20} />
+                </Button>
+              )}
+            </div>
+            <nav className="flex-1 overflow-y-auto p-4 space-y-8">
+              <div>
+                <p className="text-[10px] uppercase text-slate-500 font-bold mb-3 px-2 tracking-widest">
+                  Global Engine
+                </p>
+                <button
+                  onClick={() => {
+                    setCurrentView("terminal");
+                    if(isMobile) setSidebarOpen(false);
+                  }}
+                  className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-all group ${currentView === "terminal" ? "text-emerald-400 bg-slate-900" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
                 >
+                  <TerminalIcon
+                    size={14}
+                    className={currentView === "terminal" ? "animate-pulse" : "group-hover:text-emerald-400"}
+                  />{" "}
+                  Terminal Shell
+                </button>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-slate-500 font-bold mb-3 px-2 tracking-widest">
+                  Active Clusters
+                </p>
+                <div className="space-y-1">
+                  {databases.map((db) => (
+                    <div
+                      key={db}
+                      className="flex items-center group px-1 rounded-md transition-colors hover:bg-slate-900/50"
+                    >
+                      <Button
+                        variant="ghost"
+                        className={`flex-1 justify-start h-9 text-xs transition-all ${activeDb === db ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+                        onClick={() => fetchTables(db)}
+                      >
+                        <Database size={14} className="mr-2" /> {db}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        onClick={() => triggerDelete("database", db)}
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex gap-2 px-2">
+                  <Input
+                    placeholder="New DB..."
+                    value={newDbName}
+                    onChange={(e) => setNewDbName(e.target.value)}
+                    className="h-8 bg-slate-900 border-slate-800 text-xs text-white"
+                  />
                   <Button
-                    variant="ghost"
-                    className={`flex-1 justify-start h-9 text-xs transition-all ${activeDb === db ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
-                    onClick={() => fetchTables(db)}
-                  >
-                    <Database size={14} className="mr-2" /> {db}
-                  </Button>
-                  <Button
-                    variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                    onClick={() => triggerDelete("database", db)}
+                    className="h-8 w-10 bg-blue-600"
+                    onClick={createDatabase}
+                    disabled={isActionLoading}
                   >
-                    <Trash2 size={12} />
+                    <Plus size={14} />
                   </Button>
                 </div>
-              ))}
-            </div>
-            <div className="mt-4 flex gap-2 px-2">
-              <Input
-                placeholder="New DB..."
-                value={newDbName}
-                onChange={(e) => setNewDbName(e.target.value)}
-                className="h-8 bg-slate-900 border-slate-800 text-xs text-white"
-              />
-              <Button
-                size="icon"
-                className="h-8 w-10 bg-blue-600"
-                onClick={createDatabase}
-                disabled={isActionLoading}
-              >
-                <Plus size={14} />
-              </Button>
-            </div>
-          </div>
-          {activeDb && (
-            <div className="animate-in slide-in-from-left duration-300 border-t border-slate-900 pt-6 space-y-1">
-              <p className="text-[10px] uppercase text-slate-500 font-bold mb-3 px-2 tracking-widest">
-                Logical Session
-              </p>
-              <button
-                onClick={() => setCurrentView("db-overview")}
-                className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-all ${currentView === "db-overview" ? "text-blue-400 bg-slate-900" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
-              >
-                <LayoutGrid size={14} /> Schema Overview
-              </button>
-              <button
-                onClick={() => setCurrentView("relational-explorer")}
-                className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-all ${currentView === "relational-explorer" ? "text-amber-400 bg-slate-900" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
-              >
-                <GitBranch size={14} /> Relational Explorer
-              </button>
-              <div className="pt-4 space-y-1">
-                {tables.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => fetchRows(t)}
-                    className={`flex items-center justify-between w-full px-3 py-2 rounded-md text-sm transition-all ${selectedTable === t && currentView === "table-rows" ? "text-white bg-slate-800 shadow-md" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <TableIcon size={14} /> {t}
-                    </div>
-                    <ChevronRight
-                      size={12}
-                      className="opacity-0 group-hover:opacity-100"
-                    />
-                  </button>
-                ))}
               </div>
-            </div>
-          )}
-        </nav>
+              {activeDb && (
+                <div className="animate-in slide-in-from-left duration-300 border-t border-slate-900 pt-6 space-y-1">
+                  <p className="text-[10px] uppercase text-slate-500 font-bold mb-3 px-2 tracking-widest">
+                    Logical Session
+                  </p>
+                  <button
+                    onClick={() => {
+                      setCurrentView("db-overview");
+                      if(isMobile) setSidebarOpen(false);
+                    }}
+                    className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-all ${currentView === "db-overview" ? "text-blue-400 bg-slate-900" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
+                  >
+                    <LayoutGrid size={14} /> Schema Overview
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCurrentView("relational-explorer");
+                      if(isMobile) setSidebarOpen(false);
+                    }}
+                    className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-all ${currentView === "relational-explorer" ? "text-amber-400 bg-slate-900" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
+                  >
+                    <GitBranch size={14} /> Relational Explorer
+                  </button>
+                  <div className="pt-4 space-y-1">
+                    {tables.map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => fetchRows(t)}
+                        className={`flex items-center justify-between w-full px-3 py-2 rounded-md text-sm transition-all ${selectedTable === t && currentView === "table-rows" ? "text-white bg-slate-800 shadow-md" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <TableIcon size={14} /> {t}
+                        </div>
+                        <ChevronRight
+                          size={12}
+                          className="opacity-0 group-hover:opacity-100"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </nav>
+          </div>
+        )}
       </aside>
 
       {/* --- MAIN WORKSPACE --- */}
       <main className="flex-1 flex flex-col overflow-hidden bg-[#f8fafc]">
-        <header className="h-16 bg-white border-b flex items-center justify-between px-8 text-slate-600 shadow-sm">
-          <Badge
-            variant="outline"
-            className={`font-mono text-[10px] cursor-pointer transition-all uppercase ${activeDb ? "text-blue-600 bg-blue-50 border-blue-200" : "text-slate-400"}`}
-            onClick={() => {
-              setCurrentView("db-overview");
-              setSelectedTable(null);
-            }}
-          >
-            {activeDb ? `ACTIVE SESSION: ${activeDb}` : "NO SESSION"}
-          </Badge>
+        <header className="h-16 bg-white border-b flex items-center justify-between px-4 lg:px-8 text-slate-600 shadow-sm">
+          <div className="flex items-center gap-4">
+            {/* TOGGLE BUTTON */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="text-slate-500"
+            >
+              {sidebarOpen ? <PanelLeftClose size={20} /> : <Menu size={20} />}
+            </Button>
+            
+            <Badge
+              variant="outline"
+              className={`hidden sm:flex font-mono text-[10px] cursor-pointer transition-all uppercase ${activeDb ? "text-blue-600 bg-blue-50 border-blue-200" : "text-slate-400"}`}
+              onClick={() => {
+                setCurrentView("db-overview");
+                setSelectedTable(null);
+              }}
+            >
+              {activeDb ? `ACTIVE SESSION: ${activeDb}` : "NO SESSION"}
+            </Badge>
+          </div>
+
           <div className="flex items-center gap-2">
             {activeDb && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-slate-400 hover:text-red-500 transition-colors"
+                className="text-slate-400 hover:text-red-500 transition-colors hidden sm:flex"
                 onClick={() =>
                   triggerDelete(
                     selectedTable ? "table" : "database",
@@ -565,7 +628,7 @@ const App = () => {
                   )
                 }
               >
-                <Trash2 size={14} /> Drop Entity
+                <Trash2 size={14} className="mr-2" /> Drop Entity
               </Button>
             )}
             <Button
@@ -581,16 +644,16 @@ const App = () => {
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-8">
+        <section className="flex-1 overflow-y-auto p-4 lg:p-8">
           {isLoading ? (
             <div className="h-full flex flex-col items-center justify-center gap-4 text-slate-400">
               <Loader2 className="animate-spin text-blue-500" size={40} />
-              <p className="text-xs font-mono tracking-widest uppercase">
+              <p className="text-xs font-mono tracking-widest uppercase text-center">
                 Executing Instruction...
               </p>
             </div>
           ) : !activeDb && currentView !== "terminal" ? (
-            <div className="h-full flex flex-col items-center justify-center gap-4 text-slate-400 transition-all">
+            <div className="h-full flex flex-col items-center justify-center gap-4 text-slate-400 transition-all text-center">
               <DatabaseZap size={64} className="opacity-10" />
               <p className="font-bold tracking-tight">
                 Open a database cluster to begin
@@ -604,7 +667,7 @@ const App = () => {
                     <h2 className="text-xs font-bold uppercase text-slate-400 mb-6 tracking-widest flex items-center gap-2">
                       <LayoutGrid size={16} /> Schema Designer
                     </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">
                           Entity Name
@@ -648,12 +711,12 @@ const App = () => {
                     </div>
                     <Button
                       onClick={createTableInDb}
-                      className="mt-6 bg-blue-600 hover:bg-blue-700 shadow-lg px-10"
+                      className="mt-6 w-full sm:w-auto bg-blue-600 hover:bg-blue-700 shadow-lg px-10"
                     >
                       Initialize Collection
                     </Button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     {tables.map((t) => (
                       <Card
                         key={t}
@@ -691,11 +754,11 @@ const App = () => {
               {currentView === "table-rows" && (
                 <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                   <div
-                    className={`flex justify-between items-end p-6 rounded-xl border shadow-sm transition-all ${editingPk ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`}
+                    className={`flex flex-col lg:flex-row justify-between lg:items-end p-6 rounded-xl border shadow-sm transition-all gap-6 ${editingPk ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`}
                   >
                     <div className="space-y-4">
                       <div>
-                        <h1 className="text-2xl font-black tracking-tighter capitalize underline decoration-blue-500 decoration-4">
+                        <h1 className="text-xl sm:text-2xl font-black tracking-tighter capitalize underline decoration-blue-500 decoration-4">
                           Table: {selectedTable}
                         </h1>
                         <Badge
@@ -711,9 +774,8 @@ const App = () => {
                         </Badge>
                       </div>
 
-                      {/* Schema Evolution Section */}
-                      <div className="flex gap-2 items-center pt-2">
-                        <div className="relative">
+                      <div className="flex flex-wrap gap-2 items-center pt-2">
+                        <div className="relative flex-1 min-w-37.5">
                           <Columns
                             size={14}
                             className="absolute left-2.5 top-2.5 text-slate-400"
@@ -722,13 +784,13 @@ const App = () => {
                             placeholder="New column name..."
                             value={newColName}
                             onChange={(e) => setNewColName(e.target.value)}
-                            className="h-9 w-40 pl-8 bg-slate-50/50 text-xs border-dashed"
+                            className="h-9 w-full pl-8 bg-slate-50/50 text-xs border-dashed"
                           />
                         </div>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-9 text-[10px] uppercase font-bold"
+                          className="h-9 text-[10px] uppercase font-bold flex-1 sm:flex-none"
                           onClick={addAttribute}
                         >
                           <Plus size={12} className="mr-1" /> Add Attribute
@@ -738,7 +800,7 @@ const App = () => {
 
                     <div className="flex flex-wrap gap-2 items-end">
                       {tableColumns.map((col) => (
-                        <div key={col} className="space-y-1">
+                        <div key={col} className="space-y-1 flex-1 min-w-25">
                           <span className="text-[9px] font-bold text-slate-400 uppercase ml-1 flex items-center gap-1">
                             {col === pkInput && (
                               <Key size={8} className="text-blue-500" />
@@ -747,7 +809,7 @@ const App = () => {
                           </span>
                           <Input
                             placeholder={col}
-                            className="w-32 bg-white"
+                            className="w-full bg-white"
                             value={rowPayload[col] || ""}
                             onChange={(e) =>
                               setRowPayload({
@@ -759,16 +821,16 @@ const App = () => {
                           />
                         </div>
                       ))}
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 w-full sm:w-auto">
                         <Button
                           onClick={
                             editingPk ? handleCommitUpdate : handleInsertRow
                           }
-                          className={
+                          className={`flex-1 sm:flex-none ${
                             editingPk
                               ? "bg-amber-600 text-white"
                               : "bg-blue-600 text-white"
-                          }
+                          }`}
                         >
                           {editingPk ? "Update" : "Insert"}
                         </Button>
@@ -787,54 +849,37 @@ const App = () => {
                       </div>
                     </div>
                   </div>
-                  <Card className="shadow-lg border-slate-200 overflow-hidden bg-white">
+                  
+                  {/* DATA TABLE WRAPPER */}
+                  <Card className="shadow-lg border-slate-200 overflow-x-auto bg-white">
                     <Table>
                       <TableHeader className="bg-slate-900">
                         <TableRow className="hover:bg-transparent">
-                          {" "}
-                          {/* Force row hover to be transparent */}
                           {tableColumns.map((k) => {
                             const isPk = k === (pkInput || tableColumns[0]);
-
                             return (
                               <TableHead
                                 key={k}
-                                className="font-bold text-slate-300 uppercase text-[10px] tracking-widest border-b border-slate-800"
+                                className="font-bold text-slate-300 uppercase text-[10px] tracking-widest border-b border-slate-800 whitespace-nowrap"
                               >
-                                {/* Using group/col to trigger the icon without changing the header background */}
-                                <div className="flex items-center justify-between group/col py-2 px-1">
+                                <div className="flex items-center justify-between group/col py-2 px-1 gap-2">
                                   <span className="flex items-center gap-2">
                                     {isPk && (
-                                      <Key
-                                        size={12}
-                                        className="text-blue-400"
-                                      />
+                                      <Key size={12} className="text-blue-400" />
                                     )}
-                                    <span
-                                      className={
-                                        isPk
-                                          ? "text-blue-100 font-extrabold"
-                                          : "opacity-90"
-                                      }
-                                    >
+                                    <span className={isPk ? "text-blue-100 font-extrabold" : "opacity-90"}>
                                       {k}
                                     </span>
                                   </span>
-
                                   {!isPk && (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        triggerDelete(
-                                          "column",
-                                          selectedTable,
-                                          k,
-                                        );
+                                        triggerDelete("column", selectedTable, k);
                                       }}
-                                      className="opacity-0 group-hover/col:opacity-100 transition-all p-2 rounded-md 
-                           text-red-500 bg-red-500/0 hover:bg-red-500/20 hover:text-red-400 
-                           border border-transparent hover:border-red-500/30"
-                                      title={`Purge attribute '${k}'`}
+                                      className="lg:opacity-0 group-hover/col:opacity-100 transition-all p-2 rounded-md 
+                                      text-red-500 bg-red-500/0 hover:bg-red-500/20 hover:text-red-400 
+                                      border border-transparent hover:border-red-500/30"
                                     >
                                       <Trash2 size={14} />
                                     </button>
@@ -844,7 +889,7 @@ const App = () => {
                             );
                           })}
                           <TableHead className="text-right text-slate-300 uppercase text-[10px] tracking-widest px-6 border-b border-slate-800">
-                            Disk Actions
+                            Actions
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -860,33 +905,17 @@ const App = () => {
                           </TableRow>
                         ) : (
                           tableData.map((row, i) => (
-                            <TableRow
-                              key={i}
-                              className="hover:bg-blue-50/30 transition-colors"
-                            >
+                            <TableRow key={i} className="hover:bg-blue-50/30 transition-colors">
                               {Object.values(row).map((v, j) => (
-                                <TableCell
-                                  key={j}
-                                  className="text-slate-600 font-medium"
-                                >
+                                <TableCell key={j} className="text-slate-600 font-medium whitespace-nowrap">
                                   {String(v)}
                                 </TableCell>
                               ))}
-                              <TableCell className="text-right space-x-2 px-6">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-slate-300 hover:text-blue-500"
-                                  onClick={() => startEdit(row)}
-                                >
+                              <TableCell className="text-right space-x-2 px-6 whitespace-nowrap">
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-blue-500" onClick={() => startEdit(row)}>
                                   <Edit3 size={14} />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-slate-300 hover:text-red-500"
-                                  onClick={() => deleteRow(row)}
-                                >
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-red-500" onClick={() => deleteRow(row)}>
                                   <Trash2 size={14} />
                                 </Button>
                               </TableCell>
@@ -901,91 +930,44 @@ const App = () => {
 
               {currentView === "relational-explorer" && (
                 <div className="space-y-6 animate-in fade-in duration-500">
-                  <Card className="p-8 border-blue-200 bg-blue-50/20 shadow-xl shadow-blue-900/5">
-                    <h2 className="text-lg font-bold text-slate-900 mb-8 flex items-center gap-2">
+                  <Card className="p-4 sm:p-8 border-blue-200 bg-blue-50/20 shadow-xl shadow-blue-900/5">
+                    <h2 className="text-lg font-bold text-slate-900 mb-8 flex items-center gap-2 text-center sm:text-left">
                       <GitBranch size={20} className="text-blue-500" />{" "}
                       Relational Query Builder
                     </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">
-                          Table (A)
-                        </label>
-                        <Select
-                          onValueChange={(v) =>
-                            setJoinConfig({ ...joinConfig, tableA: v })
-                          }
-                        >
+                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">Table (A)</label>
+                        <Select onValueChange={(v) => setJoinConfig({ ...joinConfig, tableA: v })}>
                           <SelectTrigger className="bg-white">
                             <SelectValue placeholder="Select Table" />
                           </SelectTrigger>
                           <SelectContent>
-                            {tables.map((t) => (
-                              <SelectItem key={t} value={t}>
-                                {t}
-                              </SelectItem>
-                            ))}
+                            {tables.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">
-                          Table (B)
-                        </label>
-                        <Select
-                          onValueChange={(v) =>
-                            setJoinConfig({ ...joinConfig, tableB: v })
-                          }
-                        >
+                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">Table (B)</label>
+                        <Select onValueChange={(v) => setJoinConfig({ ...joinConfig, tableB: v })}>
                           <SelectTrigger className="bg-white">
                             <SelectValue placeholder="Select Table" />
                           </SelectTrigger>
                           <SelectContent>
-                            {tables.map((t) => (
-                              <SelectItem key={t} value={t}>
-                                {t}
-                              </SelectItem>
-                            ))}
+                            {tables.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">
-                          Join Key (A)
-                        </label>
-                        <Input
-                          placeholder="id"
-                          className="bg-white"
-                          value={joinConfig.colA}
-                          onChange={(e) =>
-                            setJoinConfig({
-                              ...joinConfig,
-                              colA: e.target.value,
-                            })
-                          }
-                        />
+                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">Join Key (A)</label>
+                        <Input placeholder="id" className="bg-white" value={joinConfig.colA} onChange={(e) => setJoinConfig({ ...joinConfig, colA: e.target.value })} />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">
-                          Join Key (B)
-                        </label>
-                        <Input
-                          placeholder="sid"
-                          className="bg-white"
-                          value={joinConfig.colB}
-                          onChange={(e) =>
-                            setJoinConfig({
-                              ...joinConfig,
-                              colB: e.target.value,
-                            })
-                          }
-                        />
+                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1">Join Key (B)</label>
+                        <Input placeholder="sid" className="bg-white" value={joinConfig.colB} onChange={(e) => setJoinConfig({ ...joinConfig, colB: e.target.value })} />
                       </div>
                     </div>
-                    <Button
-                      onClick={executeJoin}
-                      className="mt-8 bg-blue-600 hover:bg-blue-700 px-10 text-white"
-                    >
+                    <Button onClick={executeJoin} className="mt-8 w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-10 text-white">
                       Generate Relational View
                     </Button>
                   </Card>
@@ -1004,7 +986,7 @@ const App = () => {
                       pesadb-bash-v1.0
                     </span>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-6 font-mono text-[13px] space-y-1.5 custom-scrollbar selection:bg-blue-500/30 text-slate-300">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 font-mono text-[11px] sm:text-[13px] space-y-1.5 custom-scrollbar selection:bg-blue-500/30 text-slate-300">
                     {terminalHistory.map((line, i) => (
                       <div
                         key={i}
@@ -1013,22 +995,20 @@ const App = () => {
                         {line.text}
                       </div>
                     ))}
-                    <div className="flex items-center gap-2 pt-2 border-t border-slate-800/50 mt-4">
-                      <span className="text-emerald-500 font-black animate-pulse">
-                        ➜
-                      </span>
-                      <span
-                        className={`font-bold px-1.5 py-0.5 rounded uppercase text-[10px] tracking-widest border transition-all ${activeDb ? "text-cyan-400 bg-cyan-400/10 border-cyan-400/20" : "text-slate-500 bg-slate-500/10 border-slate-500/20"}`}
-                      >
-                        {activeDb || "system"}
-                      </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-slate-800/50 mt-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-500 font-black animate-pulse">➜</span>
+                        <span className={`font-bold px-1.5 py-0.5 rounded uppercase text-[8px] sm:text-[10px] tracking-widest border transition-all ${activeDb ? "text-cyan-400 bg-cyan-400/10 border-cyan-400/20" : "text-slate-500 bg-slate-500/10 border-slate-500/20"}`}>
+                          {activeDb || "system"}
+                        </span>
+                      </div>
                       <input
                         ref={terminalInputRef}
-                        className="flex-1 bg-transparent border-none outline-none text-slate-100 caret-emerald-500 font-bold font-mono placeholder:text-slate-800"
+                        className="flex-1 bg-transparent border-none outline-none text-slate-100 caret-emerald-500 font-bold font-mono placeholder:text-slate-800 text-[11px] sm:text-[13px]"
                         value={commandInput}
                         onChange={(e) => setCommandInput(e.target.value)}
                         onKeyDown={handleShellCommand}
-                        placeholder="Type HELP for instructions..."
+                        placeholder="Type HELP..."
                       />
                     </div>
                   </div>
