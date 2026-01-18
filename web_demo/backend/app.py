@@ -135,6 +135,15 @@ def add_column_to_table(db_name: str, table_name: str, payload: dict):
         return {"status": "success", "message": f"Column '{col_name}' added to {table_name}"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+@app.delete("/{db_name}/{table_name}/columns/{col_name}")
+def drop_column(db_name: str, table_name: str, col_name: str):
+    db.set_active_db(db_name)
+    try:
+        msg = db.remove_column(table_name, col_name)
+        return {"status": "success", "message": msg}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- PesaDB Bash Shell Logic ---
 

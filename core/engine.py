@@ -236,4 +236,33 @@ class DatabaseEngine:
 
             # 3. Save back to disk
             with open(metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=4)    
+                json.dump(metadata, f, indent=4) 
+                  
+    def remove_column(self, table_name, col_name):
+        """Removes an attribute from schema and physically purges it from disk."""
+        if not self.active_db:
+            raise ValueError("No active database session.")
+        
+        schema = self.schemas.get(table_name)
+        if not schema:
+            raise ValueError(f"Entity '{table_name}' not found.")
+            
+        # SAFETY GATE: Protecting the Primary Key
+        if col_name == schema.primary_key:
+            raise ValueError("Integrity Violation: Cannot drop the Primary Key.")
+
+        # 1. Update Memory Schema
+        if col_name in schema.columns:
+            del schema.columns[col_name]
+        
+        # 2. Persist Metadata change
+        self.save_metadata()
+
+        # 3. Physical Data Purge (Data Surgery)
+        rows = storage.load_table_data(self.active_db, table_name)
+        for row in rows:
+            row.pop(col_name, None) # Remove key if it exists
+        
+        # 4. Write cleaned data back to disk
+        storage.save_table_data(self.active_db, table_name, rows)
+        return f"Attribute '{col_name}' successfully purged from {table_name}." 
