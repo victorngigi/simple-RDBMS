@@ -213,3 +213,27 @@ class DatabaseEngine:
                         combined[new_key] = value
                     joined_results.append(combined)        
         return joined_results
+    def save_metadata(self, table_name=None):
+            """Persists the current memory schemas to metadata.json on disk."""
+            if not self.active_db:
+                return
+                
+            db_path = storage.ensure_db_dir(self.active_db)
+            metadata_file = os.path.join(db_path, 'metadata.json')
+            
+            # 1. Load existing metadata
+            metadata = {}
+            if os.path.exists(metadata_file):
+                with open(metadata_file, 'r') as f:
+                    try:
+                        metadata = json.load(f)
+                    except json.JSONDecodeError:
+                        metadata = {}
+
+            # 2. Update metadata with current memory state for the tables
+            for name, schema in self.schemas.items():
+                metadata[name] = schema.to_dict()
+
+            # 3. Save back to disk
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=4)    

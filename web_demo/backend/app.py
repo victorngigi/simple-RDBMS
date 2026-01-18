@@ -115,6 +115,27 @@ def perform_join(db_name: str, table_a: str, table_b: str, col_a: str, col_b: st
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/{db_name}/{table_name}/columns")
+def add_column_to_table(db_name: str, table_name: str, payload: dict):
+    db.set_active_db(db_name)
+    col_name = payload.get("name")
+    if not col_name:
+        raise HTTPException(status_code=400, detail="Column name required")
+    
+    try:
+        if table_name not in db.schemas:
+            raise HTTPException(status_code=404, detail="Table not found")
+            
+        # 1. Update schema in memory
+        db.schemas[table_name].columns[col_name] = "str"
+        
+        # 2. Persist change to metadata.json
+        db.save_metadata()
+        
+        return {"status": "success", "message": f"Column '{col_name}' added to {table_name}"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # --- PesaDB Bash Shell Logic ---
 
 @app.post("/shell")
