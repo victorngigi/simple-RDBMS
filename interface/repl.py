@@ -61,13 +61,11 @@ class PesaDBRepl:
             return
 
         headers = list(rows[0].keys())
-        # Calculate max width for each column
         widths = {h: len(h) for h in headers}
         for row in rows:
             for h in headers:
                 widths[h] = max(widths[h], len(str(row.get(h, ""))))
 
-        # Draw border
         sep = "+" + "+".join("-" * (widths[h] + 2) for h in headers) + "+"
         
         print(sep)
@@ -88,11 +86,13 @@ class PesaDBRepl:
             ("CREATE DATABASE <db>", "Initialize new database"),
             ("SELECT FROM <table>", "Query all records"),
             ("INSERT INTO <table> {d}", "Insert record (e.g. {'id':1})"),
+            ("ADD COLUMN <table> <col>", "Append new attribute to table"),
+            ("DROP COLUMN <table> <col>", "Permanently purge attribute"),
             ("DROP DATABASE <db>", "Delete database cluster"),
             ("DROP TABLE <table>", "Delete table and data"),
             ("HELP", "Show this manual"),
-            ("CLEAR", "Clear terminal"),
-            ("EXIT", "Close CLI")
+            ("CLEAR", "Clear terminal history"),
+            ("EXIT", "Close CLI session")
         ]
         for c, d in cmds:
             print(f" {CLR_CYAN}{c:<25}{CLR_RESET} : {d}")
@@ -116,6 +116,7 @@ class PesaDBRepl:
             os.system('cls' if os.name == 'nt' else 'clear')
             return
 
+        # --- INTROSPECTION ---
         if cmd_upper == "SHOW DATABASES":
             self.list_display("Available Databases", self.engine.list_databases())
             return
@@ -127,7 +128,7 @@ class PesaDBRepl:
             self.list_display(f"Tables in '{self.engine.active_db}'", list(self.engine.schemas.keys()))
             return
 
-        # USE <db_name>
+        # --- DB CONTEXT ---
         match = re.match(r"USE\s+(\w+)", cmd, re.IGNORECASE)
         if match:
             db_name = match.group(1)
@@ -138,7 +139,6 @@ class PesaDBRepl:
             self.print_success(f"Context switched to: {db_name}")
             return
 
-        # CREATE DATABASE <db_name>
         match = re.match(r"CREATE\s+DATABASE\s+(\w+)", cmd, re.IGNORECASE)
         if match:
             db_name = match.group(1)
@@ -146,19 +146,53 @@ class PesaDBRepl:
             self.print_success(f"Database '{db_name}' initialized.")
             return
 
-        # SELECT FROM <table_name>
+        # --- SCHEMA EVOLUTION ---
+        # ADD COLUMN <table_name> <column_name>
+        match = re.match(r"ADD\s+COLUMN\s+(\w+)\s+(\w+)", cmd, re.IGNORECASE)
+        if match:
+            if not self.engine.active_db:
+                self.print_error("No active DB.")
+                return
+            table_name, col_name = match.groups()
+            try:
+                if table_name not in self.engine.schemas:
+                    raise ValueError(f"Table '{table_name}' not found.")
+                self.engine.schemas[table_name].columns[col_name] = "str"
+                self.engine.save_metadata()
+                self.print_success(f"Attribute '{col_name}' added to {table_name}.")
+            except Exception as e:
+                self.print_error(str(e))
+            return
+
+        # DROP COLUMN <table_name> <column_name>
+        match = re.match(r"DROP\s+COLUMN\s+(\w+)\s+(\w+)", cmd, re.IGNORECASE)
+        if match:
+            if not self.engine.active_db:
+                self.print_error("No active DB.")
+                return
+            table_name, col_name = match.groups()
+            try:
+                msg = self.engine.remove_column(table_name, col_name)
+                self.print_success(msg)
+            except Exception as e:
+                self.print_error(str(e))
+            return
+
+        # --- DATA OPERATIONS ---
         match = re.match(r"SELECT\s+FROM\s+(\w+)", cmd, re.IGNORECASE)
         if match:
             if not self.engine.active_db:
                 self.print_error("No active DB context.")
                 return
             table_name = match.group(1)
-            rows = self.engine.select(table_name)
-            self.print_success(f"Found {len(rows)} records.")
-            self.table_display(rows) # USE NEW TABLE FORMATTER
+            try:
+                rows = self.engine.select(table_name)
+                self.print_success(f"Found {len(rows)} records.")
+                self.table_display(rows)
+            except Exception as e:
+                self.print_error(str(e))
             return
 
-        # INSERT INTO <table_name> {data}
         match = re.match(r"INSERT\s+INTO\s+(\w+)\s+(.+)", cmd, re.IGNORECASE)
         if match:
             table_name = match.group(1)
@@ -167,7 +201,29 @@ class PesaDBRepl:
                 msg = self.engine.insert(table_name, data)
                 self.print_success(msg)
             except Exception as e:
-                self.print_error(f"Malformed data: {e}")
+                self.print_error(f"Malformed data or constraint violation: {e}")
+            return
+
+        # --- DROP OPERATIONS ---
+        match = re.match(r"DROP\s+TABLE\s+(\w+)", cmd, re.IGNORECASE)
+        if match:
+            if not self.engine.active_db:
+                self.print_error("No active DB.")
+                return
+            try:
+                msg = self.engine.drop_table(match.group(1))
+                self.print_success(msg)
+            except Exception as e:
+                self.print_error(str(e))
+            return
+
+        match = re.match(r"DROP\s+DATABASE\s+(\w+)", cmd, re.IGNORECASE)
+        if match:
+            try:
+                msg = self.engine.delete_database(match.group(1))
+                self.print_success(msg)
+            except Exception as e:
+                self.print_error(str(e))
             return
 
         self.print_error(f"Unknown command: '{cmd}'. Type 'HELP' for instructions.")
