@@ -158,26 +158,25 @@ def execute_raw_command(payload: dict):
     # --- 0. HELP COMMAND ---
     if cmd_upper == "HELP":
         return {"status": "success", "message": (
-            "Available PesaDB Commands:\n"
-            "--------------------------\n"
+            "PesaDB Web Shell Manual\n"
+            "-----------------------\n"
             "SHOW DATABASES           : List all logical clusters.\n"
             "SHOW TABLES              : List tables in active DB.\n"
             "USE <db_name>            : Switch context to a database.\n"
-            "CREATE DATABASE <db_name>: Initialize a new logical cluster.\n"
-            "DROP DATABASE <db_name>  : Delete a database cluster.\n"
+            "CREATE DATABASE <db_name>: Initialize a new cluster.\n"
+            "ADD COLUMN <tbl> <col>   : Append attribute to schema.\n"
+            "DROP COLUMN <tbl> <col>  : Purge attribute from disk.\n"
             "SELECT FROM <table_name> : Retrieve all records.\n"
-            "INSERT INTO <table_name> {d} : Commit a record (JSON).\n"
-            "DROP TABLE <table_name>  : Delete a table.\n"
-            "CLEAR                    : Clear terminal history."
+            "INSERT INTO <table_name> : Commit record {id:1}.\n"
+            "CLEAR                    : Wipe terminal history."
         )}
 
-    # --- 1. INTROSPECTION: SHOW DATABASES ---
+    # --- 1. INTROSPECTION ---
     if cmd_upper == "SHOW DATABASES":
         dbs = db.list_databases()
         msg = "Available Databases:\n" + "\n".join([f" • {d}" for d in dbs])
         return {"status": "success", "message": msg}
 
-    # --- 2. INTROSPECTION: SHOW TABLES ---
     if cmd_upper == "SHOW TABLES":
         if not db.active_db:
             raise HTTPException(status_code=400, detail="No active session. Use 'USE <db>'")
@@ -185,7 +184,38 @@ def execute_raw_command(payload: dict):
         msg = f"Tables in '{db.active_db}':\n" + ("\n".join([f" • {t}" for t in tables]) if tables else " (empty set)")
         return {"status": "success", "message": msg}
 
-    # --- 3. USE <db_name> (With Validation) ---
+    # --- 2. SCHEMA EVOLUTION (New Features) ---
+    
+    # ADD COLUMN <table_name> <column_name>
+    match = re.match(r"ADD\s+COLUMN\s+(\w+)\s+(\w+)", raw_cmd, re.IGNORECASE)
+    if match:
+        if not db.active_db: 
+            raise HTTPException(status_code=400, detail="No active DB")
+        table_name, col_name = match.groups()
+        try:
+            if table_name not in db.schemas:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            db.schemas[table_name].columns[col_name] = "str"
+            db.save_metadata()
+            return {"status": "success", "message": f"Attribute '{col_name}' added to {table_name}."}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # DROP COLUMN <table_name> <column_name>
+    match = re.match(r"DROP\s+COLUMN\s+(\w+)\s+(\w+)", raw_cmd, re.IGNORECASE)
+    if match:
+        if not db.active_db: 
+            raise HTTPException(status_code=400, detail="No active DB")
+        table_name, col_name = match.groups()
+        try:
+            msg = db.remove_column(table_name, col_name)
+            return {"status": "success", "message": msg}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # --- 3. CORE ENGINE OPS ---
+    
+    # USE <db_name>
     match = re.match(r"USE\s+(\w+)", raw_cmd, re.IGNORECASE)
     if match:
         db_name = match.group(1)
@@ -194,33 +224,16 @@ def execute_raw_command(payload: dict):
         db.set_active_db(db_name)
         return {"status": "success", "message": f"Switched to database: {db_name}"}
 
-    # --- 4. CREATE DATABASE <db_name> ---
-    match = re.match(r"CREATE\s+DATABASE\s+(\w+)", raw_cmd, re.IGNORECASE)
-    if match:
-        db_name = match.group(1)
-        db.set_active_db(db_name)
-        return {"status": "success", "message": f"Database {db_name} created."}
-
-    # --- 5. DROP DATABASE <db_name> ---
-    match = re.match(r"DROP\s+DATABASE\s+(\w+)", raw_cmd, re.IGNORECASE)
-    if match:
-        db_name = match.group(1)
-        try:
-            db.delete_database(db_name)
-            return {"status": "success", "message": f"Database {db_name} deleted."}
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-    # --- 6. SELECT FROM <table_name> ---
+    # SELECT FROM <table_name>
     match = re.match(r"SELECT\s+FROM\s+(\w+)", raw_cmd, re.IGNORECASE)
     if match:
         if not db.active_db: 
             raise HTTPException(status_code=400, detail="No active DB")
         table_name = match.group(1)
         rows = db.select(table_name)
-        return {"status": "success", "message": f"Fetched {len(rows)} rows."}
+        return {"status": "success", "message": f"Fetched {len(rows)} records from disk."}
 
-    # --- 7. INSERT INTO <table_name> VALUES ---
+    # INSERT INTO <table_name> {data}
     match = re.match(r"INSERT\s+INTO\s+(\w+)\s+(.+)", raw_cmd, re.IGNORECASE)
     if match:
         table_name = match.group(1)
@@ -228,19 +241,7 @@ def execute_raw_command(payload: dict):
             data = ast.literal_eval(match.group(2))
             msg = db.insert(table_name, data)
             return {"status": "success", "message": msg}
-        except Exception:
-            raise HTTPException(status_code=400, detail="Malformed data. Use {key:val}")
-
-    # --- 8. DROP TABLE <table_name> ---
-    match = re.match(r"DROP\s+TABLE\s+(\w+)", raw_cmd, re.IGNORECASE)
-    if match:
-        if not db.active_db: 
-            raise HTTPException(status_code=400, detail="No active DB")
-        table_name = match.group(1)
-        try:
-            db.drop_table(table_name)
-            return {"status": "success", "message": f"Table {table_name} dropped."}
         except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=f"Data Error: {str(e)}")
 
     return {"status": "error", "message": f"Command not recognized: {raw_cmd}"}
