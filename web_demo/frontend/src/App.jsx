@@ -98,6 +98,23 @@ const App = () => {
     target: null,
   });
 
+  useEffect(() => {
+    const base = "PesaDB";
+    let context = "Console";
+
+    if (currentView === "terminal") {
+      context = "Web Shell";
+    } else if (currentView === "relational-explorer") {
+      context = "Relational Explorer";
+    } else if (selectedTable) {
+      context = `Table: ${selectedTable}`;
+    } else if (activeDb) {
+      context = `DB: ${activeDb}`;
+    }
+
+    document.title = `${base} | ${context}`;
+  }, [currentView, selectedTable, activeDb]);
+
   // --- AUTO-FOCUS TERMINAL ---
   useEffect(() => {
     if (currentView === "terminal" && terminalInputRef.current)
